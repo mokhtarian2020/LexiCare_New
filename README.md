@@ -12,8 +12,10 @@
 ## 🔧 Tecnologie
 - **Backend**: FastAPI + PostgreSQL
 - **AI**: MedGemma via Ollama
-- **Frontend**: React (Vite)
-- **PDF Parsing**: PyMuPDF (fitz)
+- **Frontend**: React (Vite) + TailwindCSS
+- **PDF Parsing**: PyMuPDF (fitz) + OCR (Tesseract)
+
+> **Nota**: Il binario di tailwindcss nella directory `frontend/tools/` è stato rimosso dal repository GitHub a causa delle limitazioni di dimensione dei file. Puoi installare tailwindcss tramite npm durante lo sviluppo.
 
 ---
 
