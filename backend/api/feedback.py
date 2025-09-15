@@ -1,11 +1,10 @@
 # backend/api/feedback.py
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from uuid import UUID
 from backend.db import crud
 from backend.db.session import get_db
-from fastapi import Depends
 
 router = APIRouter()
 

@@ -7,13 +7,13 @@ from uuid import UUID
 from datetime import datetime
 import os
 
-from backend.core.pdf_parser import extract_metadata
-from backend.core.ai_engine import analyze_text_with_medgemma
-from backend.core.comparator import compare_with_previous_reports
-from backend.db import crud
-from backend.db.session import get_db
-from backend.auth.api_auth import get_api_key
-from backend.db.models import Report, ReportTypeEnum
+from core.pdf_parser import extract_metadata
+from core.ai_engine import analyze_text_with_medgemma
+from core.comparator import compare_with_previous_reports
+from db import crud
+from db.session import get_db
+from auth.api_auth import get_api_key
+from db.models import Report
 
 router = APIRouter()
 
@@ -100,7 +100,6 @@ async def ehr_analyze_documents(
                 path = crud.save_pdf(f.filename, file_bytes)
                 report = crud.create_report(
                     db=db,
-                    patient_id=UUID.uuid4(),
                     patient_cf=meta["codice_fiscale"],
                     patient_name=meta["patient_name"],
                     report_type=meta["report_type"],
@@ -151,15 +150,9 @@ async def get_patient_reports(
     """Recupera lo storico dei referti di un paziente dal sistema LexiCare.
     
     - **codice_fiscale**: il codice fiscale del paziente (obbligatorio)
-    - **report_type**: filtro opzionale per tipo di referto (radiologia, laboratorio, patologia)
+    - **report_type**: filtro opzionale per tipo di referto esatto (es. "TAC Torace", "Eccocardiografia")
     """
-    # Validazione report_type se presente
-    if report_type and report_type not in [e.value for e in ReportTypeEnum]:
-        valid_types = [e.value for e in ReportTypeEnum]
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Tipo di referto non valido. Valori validi: {', '.join(valid_types)}"
-        )
+    # No validation needed since we accept any exact report title
     
     reports = crud.get_patient_reports(db, codice_fiscale, report_type)
     
@@ -251,5 +244,16 @@ async def submit_ehr_feedback(
 async def get_report_types(
     api_key: str = Depends(get_api_key)
 ):
-    """Restituisce la lista di tutti i tipi di referto supportati dal sistema."""
-    return {"tipi_referto": [e.value for e in ReportTypeEnum]}
+    """Restituisce informazioni sui tipi di referto supportati dal sistema."""
+    return {
+        "tipi_referto": "Il sistema supporta qualsiasi tipo di referto",
+        "descrizione": "LexiCare estrae automaticamente il titolo esatto del referto dal documento e non ha limitazioni predefinite sui tipi supportati",
+        "esempi": [
+            "TAC Torace",
+            "Eccocardiografia", 
+            "Esami del Sangue",
+            "Risonanza Magnetica",
+            "Biopsia",
+            "Radiografia"
+        ]
+    }

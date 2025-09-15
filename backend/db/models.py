@@ -1,28 +1,20 @@
 import uuid
-import enum
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Text, Enum
+from sqlalchemy import Column, String, DateTime, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
-
-# Enum per il tipo di referto
-class ReportTypeEnum(str, enum.Enum):
-    radiologia = "radiologia"
-    laboratorio = "laboratorio"
-    patologia = "patologia"
 
 # Tabella dei referti
 class Report(Base):
     __tablename__ = "reports"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    patient_id = Column(UUID(as_uuid=True), nullable=False)
     patient_cf   = Column(String(16),    nullable=True)
     patient_name = Column(String, nullable=True)  # ✅ NEW FIELD
 
-    report_type = Column(Enum(ReportTypeEnum), nullable=False)
+    report_type = Column(String, nullable=False)  # Now stores exact exam titles like "Esame Chimico Fisico Delle Urine"
     report_date = Column(DateTime, nullable=False)
 
     file_path = Column(Text, nullable=False)

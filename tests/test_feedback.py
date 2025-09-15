@@ -7,11 +7,9 @@ from backend.db import crud, models
 
 def test_submit_feedback(client, db_session: Session):
     # First create a test report
-    test_patient_id = uuid4()
     test_cf = "RSSMRA80A01H501U"  # Codice fiscale di esempio
     report = crud.create_report(
         db=db_session,
-        patient_id=test_patient_id,
         patient_cf=test_cf,
         patient_name="Mario Rossi",
         report_type="radiologia",

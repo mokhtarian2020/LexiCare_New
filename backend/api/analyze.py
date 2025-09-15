@@ -1,10 +1,7 @@
-from fastapi import APIRouter, File, UploadFile, HTTPException, Depends, Request
+from fastapi import APIRouter, File, UploadFile, HTTPException, Depends
 from typing import List
 from datetime import datetime
 import uuid
-import logging
-import traceback
-import json
 
 from backend.core.pdf_parser import extract_metadata
 from backend.core.ai_engine import analyze_text_with_medgemma
@@ -12,169 +9,143 @@ from backend.core.comparator import compare_with_previous_reports
 from backend.db import crud
 from backend.db.session import get_db
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 router = APIRouter()
 
 
 @router.post("/", summary="Analizza uno o più referti PDF")
 async def analyze_documents(
-    request: Request,
     files: List[UploadFile] = File(...),
     db=Depends(get_db)
 ):
     if not (1 <= len(files) <= 5):
         raise HTTPException(400, "Seleziona da 1 a 5 file PDF.")
+
+    # Step 1: Extract metadata from all files
+    file_data = []
+    for f in files:
+        try:
+            file_bytes = await f.read()
+            meta = extract_metadata(file_bytes)
+            file_data.append({
+                'filename': f.filename,
+                'file_bytes': file_bytes,
+                'metadata': meta,
+                'error': False
+            })
+        except Exception as e:
+            # Include error files in results but don't process them
+            file_data.append({
+                'filename': f.filename,
+                'file_bytes': None,
+                'metadata': None,
+                'error': True,
+                'error_message': f"Errore nella lettura del file: {str(e)}"
+            })
     
-    logger.info(f"Analyzing {len(files)} file(s)")
+    # Step 2: Sort files by report date (chronological order)
+    valid_files = [fd for fd in file_data if not fd.get('error', False)]
+    error_files = [fd for fd in file_data if fd.get('error', False)]
+    
+    def get_sort_date(file_data):
+        try:
+            date_str = file_data['metadata'].get('report_date')
+            if date_str:
+                # Parse date to ensure proper sorting
+                date_formats = ["%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y-%m-%d"]
+                for fmt in date_formats:
+                    try:
+                        return datetime.strptime(date_str, fmt)
+                    except ValueError:
+                        continue
+            # If no valid date, use current time
+            return datetime.utcnow()
+        except:
+            return datetime.utcnow()
+    
+    valid_files.sort(key=get_sort_date)
+    
+    # Step 3: Process files in chronological order
     risultati: list[dict] = []
 
-    for f in files:
-        logger.info(f"Processing file: {f.filename}")
+    # First, add any error files to results
+    for fd in error_files:
+        risultati.append({
+            "salvato": False,
+            "messaggio": fd.get('error_message', "Errore sconosciuto"),
+            "diagnosi_ai": None,
+            "classificazione_ai": None,
+            "codice_fiscale": None,
+            "nome_paziente": None,
+            "tipo_referto": None,
+            "data_referto": None,
+        })
+
+    # Process valid files in chronological order
+    for fd in valid_files:
+        meta = fd['metadata']
+        file_bytes = fd['file_bytes']
+        f_filename = fd['filename']
         
-        try:
-            # Read the file
-            file_bytes = await f.read()
-            
-            # Extract metadata and text from PDF
-            try:
-                meta = extract_metadata(file_bytes)
-                full_text = meta["full_text"]
-                logger.info(f"Extracted text length: {len(full_text)} characters")
-                logger.info(f"Found CF: {meta.get('codice_fiscale', 'None')}, Report type: {meta.get('report_type', 'Unknown')}")
-            except Exception as pdf_error:
-                logger.error(f"Error extracting PDF metadata: {str(pdf_error)}")
-                logger.error(traceback.format_exc())
-                risultati.append({
-                    "salvato": False,
-                    "messaggio": f"Errore nell'elaborazione del PDF: {str(pdf_error)}",
-                    "filename": f.filename
-                })
-                continue
-            
-            # Run AI analysis
-            try:
-                ai = analyze_text_with_medgemma(full_text)
-                logger.info(f"AI analysis complete: {ai.get('classification', 'Unknown')}")
-            except Exception as ai_error:
-                logger.error(f"Error in AI analysis: {str(ai_error)}")
-                logger.error(traceback.format_exc())
-                risultati.append({
-                    "salvato": False,
-                    "messaggio": f"Errore nell'analisi AI: {str(ai_error)}",
-                    "filename": f.filename,
-                    "codice_fiscale": meta.get("codice_fiscale"),
-                    "nome_paziente": meta.get("patient_name"),
-                })
-                continue                # Process based on whether we found a Codice Fiscale
-            if not meta.get("codice_fiscale"):
-                logger.info(f"⚠️ No Codice Fiscale found in report {f.filename}")
-                risultati.append({
-                    "salvato"            : False,
-                    "messaggio"          : "Codice Fiscale assente – referto NON salvato.",
-                    "diagnosi_ai"        : ai["diagnosis"],
-                    "classificazione_ai" : ai["classification"],
-                    "codice_fiscale"     : None,
-                    "tipo_referto"       : meta.get("report_type", "sconosciuto"),
-                    "nome_file"          : f.filename,
-                    "nome_paziente"      : meta.get("patient_name"),
-                    "data_referto"       : meta.get("report_date")
-                })
-                continue
+        full_text = meta["full_text"]
+        ai = analyze_text_with_medgemma(full_text)
 
-            # Process report with Codice Fiscale
-            try:
-                logger.info(f"✅ Codice Fiscale found: {meta['codice_fiscale']}")
-                internal_uuid = uuid.uuid4()
-                
-                # Normalize date format
-                try:
-                    if meta["report_date"]:
-                        # Support various date formats (dd/mm/yyyy, dd-mm-yyyy, etc)
-                        parsed_date = None
-                        date_formats = ["%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y-%m-%d"]
-                        
-                        for fmt in date_formats:
-                            try:
-                                parsed_date = datetime.strptime(meta["report_date"], fmt)
-                                break
-                            except ValueError:
-                                continue
-                                
-                        report_dt = parsed_date if parsed_date else datetime.utcnow()
-                    else:
-                        report_dt = datetime.utcnow()
-                except Exception as e:
-                    logger.warning(f"⚠️ Date parsing error: {e}")
-                    report_dt = datetime.utcnow()
-
-                # Save to disk & DB
-                logger.info(f"Saving PDF to disk and creating DB record")
-                path = crud.save_pdf(f.filename, file_bytes)
-                rec = crud.create_report(
-                    db               = db,
-                    patient_id       = internal_uuid,
-                    patient_cf       = meta["codice_fiscale"],
-                    patient_name     = meta["patient_name"],
-                    report_type      = meta["report_type"],
-                    report_date      = report_dt,
-                    file_path        = path,
-                    extracted_text   = full_text,
-                    ai_diagnosis     = ai["diagnosis"],
-                    ai_classification= ai["classification"],
-                )
-                logger.info(f"Report saved with ID: {rec.id}")
-
-                # Compare with previous report
-                logger.info(f"Comparing with previous reports")
-                cmp = compare_with_previous_reports(
-                    db            = db,
-                    patient_cf    = meta["codice_fiscale"],
-                    report_type   = meta["report_type"],
-                    new_text      = full_text,
-                )
-                crud.update_report_comparison(db, rec.id, cmp)
-                logger.info(f"Comparison status: {cmp['status']}")
-
-                risultati.append({
-                    "salvato"            : True,
-                    "messaggio"          : "Referto salvato con successo.",
-                    "report_id"          : str(rec.id),
-                    "diagnosi_ai"        : ai["diagnosis"],
-                    "classificazione_ai" : ai["classification"],
-                    "codice_fiscale"     : meta["codice_fiscale"],
-                    "nome_paziente"      : meta["patient_name"],
-                    "tipo_referto"       : meta["report_type"],
-                    "data_referto"       : meta["report_date"],
-                    "situazione"         : cmp["status"],
-                    "spiegazione"        : cmp["explanation"],
-                })
-            
-            except Exception as save_error:
-                logger.error(f"Error saving report: {str(save_error)}")
-                logger.error(traceback.format_exc())
-                risultati.append({
-                    "salvato": False,
-                    "messaggio": f"Errore nel salvataggio del referto: {str(save_error)}",
-                    "diagnosi_ai": ai["diagnosis"],
-                    "classificazione_ai": ai["classification"],
-                    "codice_fiscale": meta.get("codice_fiscale"),
-                    "nome_paziente": meta.get("patient_name"),
-                    "tipo_referto": meta.get("report_type"),
-                    "data_referto": meta.get("report_date"),
-                })
-        
-        except Exception as general_error:
-            logger.error(f"General error processing file {f.filename}: {str(general_error)}")
-            logger.error(traceback.format_exc())
+        # ---------------- caso SENZA Codice Fiscale -----------------
+        if not meta["codice_fiscale"]:
             risultati.append({
-                "salvato": False,
-                "messaggio": f"Errore generico: {str(general_error)}",
-                "filename": f.filename
+                "salvato"            : False,
+                "messaggio"          : "Codice Fiscale assente – referto NON salvato.",
+                "diagnosi_ai"        : ai["diagnosis"],
+                "classificazione_ai" : ai["classification"],
+                "codice_fiscale"     : None,
+                "nome_paziente"      : meta["patient_name"],
+                "tipo_referto"       : meta["report_type"],
+                "data_referto"       : meta["report_date"],
             })
-            
-    # Return all results
-    logger.info(f"Analysis complete, returning {len(risultati)} results")
+            continue
+
+        # --------------- caso CON Codice Fiscale --------------------
+        internal_uuid = uuid.uuid4()
+        try:
+            report_dt = datetime.strptime(meta["report_date"], "%d/%m/%Y") \
+                        if meta["report_date"] else datetime.utcnow()
+        except ValueError:
+            report_dt = datetime.utcnow()
+
+        # salva file disco + DB
+        path = crud.save_pdf(f_filename, file_bytes)
+        rec  = crud.create_report(
+            db               = db,
+            patient_cf       = meta["codice_fiscale"],
+            patient_name     = meta["patient_name"],
+            report_type      = meta["report_type"],
+            report_date      = report_dt,
+            file_path        = path,
+            extracted_text   = full_text,
+            ai_diagnosis     = ai["diagnosis"],
+            ai_classification= ai["classification"],
+        )
+
+        # confronto con referto precedente
+        cmp = compare_with_previous_reports(
+            db            = db,
+            patient_cf    = meta["codice_fiscale"],
+            report_type   = meta["report_type"],
+            new_text      = full_text,
+        )
+        crud.update_report_comparison(db, rec.id, cmp)
+
+        risultati.append({
+            "salvato"            : True,
+            "messaggio"          : "Referto salvato con successo.",
+            "report_id"          : str(rec.id),
+            "diagnosi_ai"        : ai["diagnosis"],
+            "classificazione_ai" : ai["classification"],
+            "codice_fiscale"     : meta["codice_fiscale"],
+            "nome_paziente"      : meta["patient_name"],
+            "tipo_referto"       : meta["report_type"],
+            "data_referto"       : meta["report_date"],
+            "situazione"         : cmp["status"],
+            "spiegazione"        : cmp["explanation"],
+        })
+
     return {"risultati": risultati}

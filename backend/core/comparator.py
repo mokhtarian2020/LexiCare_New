@@ -1,6 +1,6 @@
 # backend/core/comparator.py
 #
-# Confronta l’ultimo referto salvato con quello nuovo usando MedGemma
+# Confronta l'ultimo referto salvato con quello nuovo usando MedGemma
 # e restituisce { "status": ..., "explanation": ... }
 
 import json, os
@@ -11,7 +11,7 @@ MODEL_NAME = os.getenv("OLLAMA_MODEL", "alibayram/medgemma")
 
 def compare_with_previous_reports(db, patient_cf: str, report_type: str, new_text: str) -> dict:
     """
-    Cerca l’ultimo referto dello stesso paziente (CF) e dello stesso tipo,
+    Cerca l'ultimo referto dello stesso paziente (CF) e dello stesso tipo,
     poi chiede a MedGemma di dire se il caso è peggiorato / migliorato / invariato.
     Se non trova un referto precedente → status = 'nessun confronto disponibile'.
     """

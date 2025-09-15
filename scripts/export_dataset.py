@@ -22,7 +22,8 @@ def export_to_jsonl_and_csv():
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow([
             "report_id",
-            "patient_id",
+            "patient_cf",
+            "patient_name",
             "report_type",
             "report_date",
             "extracted_text",
@@ -45,7 +46,8 @@ def export_to_jsonl_and_csv():
 
             csv_writer.writerow([
                 str(report.id),
-                str(report.patient_id),
+                report.patient_cf,
+                report.patient_name,
                 report.report_type,
                 report.report_date.isoformat(),
                 report.extracted_text,

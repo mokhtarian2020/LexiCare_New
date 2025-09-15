@@ -7,7 +7,8 @@ from datetime import datetime
 def test_create_report(db_session):
     report = crud.create_report(
         db=db_session,
-        patient_id=uuid4(),
+        patient_cf="RSSMRA80A01H501U",
+        patient_name="Mario Rossi",
         report_type="radiologia",
         report_date=datetime.utcnow(),
         file_path="/fake/path/test.pdf",

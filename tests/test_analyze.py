@@ -9,7 +9,6 @@ def test_upload_single_pdf(client):
     file = ("files", ("test.pdf", io.BytesIO(pdf_bytes), "application/pdf"))
 
     form_data = {
-        "patient_id": str(uuid4()),
         "report_types": "radiologia",
         "report_dates": "2025-07-30T10:00"
     }

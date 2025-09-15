@@ -4,6 +4,17 @@ import Results from "./components/Results";
 
 function App() {
   const [results, setResults] = useState([]);
+  const [showNotification, setShowNotification] = useState(false);
+  
+  // Effect to check if any reports weren't saved due to missing Codice Fiscale
+  React.useEffect(() => {
+    if (results && results.length > 0) {
+      const notSavedReports = results.filter(r => !r.salvato);
+      setShowNotification(notSavedReports.length > 0);
+    } else {
+      setShowNotification(false);
+    }
+  }, [results]);
 
   return (
     <div className="min-h-screen bg-neutral-light flex flex-col">
@@ -23,6 +34,25 @@ function App() {
       {/* Main Content */}
       <main className="flex-grow">
         <div className="max-w-6xl mx-auto py-8 px-6">
+          {showNotification && (
+            <div className="bg-warning-light border-l-4 border-warning p-4 mb-6 rounded-md shadow-sm">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-warning" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-warning-dark font-medium">
+                    Uno o più referti sono stati analizzati ma non salvati nel database.
+                  </p>
+                  <p className="mt-1 text-sm text-warning-dark">
+                    I referti senza Codice Fiscale vengono analizzati e confrontati, ma non salvati permanentemente.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
           <UploadForm setResults={setResults} />
           <Results results={results} />
           

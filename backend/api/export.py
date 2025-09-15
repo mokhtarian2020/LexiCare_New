@@ -1,6 +1,9 @@
 # backend/api/export.py
 
 from fastapi import APIRouter, Response
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from scripts.export_dataset import export_to_jsonl_and_csv
 
 

@@ -3,7 +3,6 @@ import uuid
 from sqlalchemy.orm import Session
 from backend.db.models import Report
 from datetime import datetime
-from typing import Optional, List
 
 # Save PDF to disk
 def save_pdf(filename: str, content: bytes) -> str:
@@ -18,13 +17,12 @@ def save_pdf(filename: str, content: bytes) -> str:
 # Insert report into DB
 def create_report(
     db, *,
-    patient_id, patient_cf, patient_name,
+    patient_cf, patient_name,
     report_type, report_date,
     file_path, extracted_text,
     ai_diagnosis, ai_classification
 ):
     report = Report(
-        patient_id   = patient_id,
         patient_cf   = patient_cf,          # ✅
         patient_name = patient_name,
         report_type  = report_type,
@@ -48,11 +46,21 @@ def update_report_comparison(db: Session, report_id, comparison: dict):
     db.commit()
     return True
 
-# Retrieve most recent report text for comparison
-def get_most_recent_report_text(db: Session, patient_id, report_type):
+# Retrieve most recent report text for comparison (by patient_cf)
+def get_most_recent_report_text(db: Session, patient_cf, report_type):
     latest = (
         db.query(Report)
-        .filter(Report.patient_id == patient_id, Report.report_type == report_type)
+        .filter(Report.patient_cf == patient_cf, Report.report_type == report_type)
+        .order_by(Report.report_date.desc())
+        .first()
+    )
+    return latest.extracted_text if latest else None
+
+# Retrieve most recent report text for comparison (by patient_cf - codice fiscale)
+def get_most_recent_report_text_by_cf(db: Session, patient_cf, report_type):
+    latest = (
+        db.query(Report)
+        .filter(Report.patient_cf == patient_cf, Report.report_type == report_type)
         .order_by(Report.report_date.desc())
         .first()
     )
@@ -72,23 +80,3 @@ def save_feedback(db: Session, report_id, correct_diagnosis, correct_classificat
 # Export all labeled reports for training (with doctor labels)
 def get_labeled_reports(db: Session):
     return db.query(Report).filter(Report.doctor_diagnosis.isnot(None)).all()
-
-# Get most recent report by codice fiscale and type
-def get_most_recent_report_text_by_cf(db: Session, patient_cf: str, report_type: str):
-    latest = (
-        db.query(Report)
-        .filter(Report.patient_cf == patient_cf, Report.report_type == report_type)
-        .order_by(Report.report_date.desc())
-        .first()
-    )
-    return latest.extracted_text if latest else None
-
-# Get all reports for a patient by codice fiscale with optional report type filtering
-def get_patient_reports(db: Session, patient_cf: str, report_type: Optional[str] = None) -> List[Report]:
-    """Retrieve all reports for a patient by their codice fiscale with optional report type filtering"""
-    query = db.query(Report).filter(Report.patient_cf == patient_cf)
-    
-    if report_type:
-        query = query.filter(Report.report_type == report_type)
-    
-    return query.order_by(Report.report_date.desc()).all()
