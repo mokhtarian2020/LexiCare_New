@@ -6,6 +6,7 @@
 - 💡 Ricevere feedback dai medici per migliorare nel tempo
 - 📤 Esportare dataset per re-train del modello AI
 - 🔄 Integrazione con sistemi EHR (Electronic Health Record)
+- 🔐 Identificazione sicura tramite Codice Fiscale obbligatorio
 
 ---
 
@@ -52,6 +53,34 @@ npm run dev
 ```bash
 pytest tests/
 ```
+
+## 🔒 Requisiti per i Referti
+
+### Codice Fiscale Obbligatorio per Salvataggio
+
+Per garantire una corretta identificazione del paziente e tracciabilità dei referti, LexiCare richiede il **Codice Fiscale per il salvataggio permanente nel database**. I documenti senza Codice Fiscale:
+
+- Verranno comunque analizzati dall'AI (diagnosi e classificazione)
+- Verranno confrontati con referti precedenti dello stesso tipo nel database
+- Non saranno salvati nel database permanentemente
+- Saranno visualizzati con un avviso di "REFERTO ANALIZZATO (NON SALVATO)"
+
+Il sistema cerca automaticamente il Codice Fiscale nel testo del referto utilizzando pattern matching avanzato. Questo approccio permette di ottenere analisi semantiche anche per referti anonimi o senza identificativo, pur mantenendo la tracciabilità nel database solo per pazienti correttamente identificati.
+
+### Gestione dei Tipi di Referto
+
+LexiCare estrae automaticamente il titolo esatto del referto dal documento (es. "Eccocardiografia", "TAC Torace", "Esami del Sangue") e lo salva nel campo `tipo_referto` del database. Questo titolo viene utilizzato per trovare referti esattamente dello stesso tipo per confronti precisi.
+
+Il sistema supporta un numero illimitato di tipi di referto, senza alcuna categorizzazione o normalizzazione, permettendo un confronto molto preciso tra referti dello stesso tipo esatto. Per esempio:
+- Due referti "TAC Torace" saranno confrontati tra loro
+- Due referti "Eccocardiografia" saranno confrontati tra loro  
+- Due referti "TAC Addome con Mezzo di Contrasto" saranno confrontati tra loro
+
+Questo approccio permette di:
+- Confrontare referti dello stesso tipo esatto (ad es. due "TAC Torace" dello stesso paziente)
+- Mantenere la massima precisione evitando generalizzazioni o categorizzazioni
+- Visualizzare l'evoluzione clinica del paziente per esami specifici
+- Supportare qualsiasi tipo di referto senza limitazioni predefinite
 
 ---
 
@@ -106,7 +135,7 @@ Risposta:
       "classificazione_ai": "...",
       "codice_fiscale": "RSSMRA80A01H501U",
       "nome_paziente": "Mario Rossi",
-      "tipo_referto": "radiologia",
+      "tipo_referto": "TAC Torace",
       "data_referto": "15/05/2023",
       "salvato": true,
       "report_id": "uuid-here",

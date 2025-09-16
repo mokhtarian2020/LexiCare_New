@@ -40,7 +40,6 @@ def mock_patient_report():
     """Create a mock report for testing."""
     return {
         "id": str(uuid4()),
-        "patient_id": str(uuid4()),
         "patient_cf": "RSSMRA80A01H501U",
         "patient_name": "Mario Rossi",
         "report_type": "radiologia",

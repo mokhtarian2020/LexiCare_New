@@ -21,9 +21,25 @@ const UploadForm = ({ setResults }) => {
     setLoading(true);
     try {
       const data = await analyzeDocuments(formData);
-      setResults(data.risultati);
+      console.log("API Response:", data); // Debug logging
+      if (data && data.risultati) {
+        // Make sure to clear previous results first
+        setResults([]);
+        // Then set new results after a small delay to ensure React state updates properly
+        setTimeout(() => {
+          setResults(data.risultati);
+          // Check if any report was not saved due to missing CF
+          const notSavedReports = data.risultati.filter(r => !r.salvato);
+          if (notSavedReports.length > 0) {
+            console.warn(`${notSavedReports.length} reports were not saved due to missing Codice Fiscale`);
+          }
+        }, 10);
+      } else {
+        console.error("Invalid API response format:", data);
+        alert("Formato di risposta non valido dal server.");
+      }
     } catch (err) {
-      console.error(err);
+      console.error("API Error:", err);
       alert("Errore durante l'analisi dei referti.");
     } finally {
       setLoading(false);
@@ -130,9 +146,14 @@ const UploadForm = ({ setResults }) => {
           )}
         </button>
         
-        <p className="text-sm text-neutral ml-4">
-          Solo referti con Codice Fiscale valido verranno salvati nel sistema.
-        </p>
+        <div className="text-sm text-neutral ml-4">
+          <p className="font-semibold text-warning-dark">
+            Importante: Solo referti con Codice Fiscale valido verranno salvati nel sistema.
+          </p>
+          <p className="text-xs mt-1">
+            I PDF senza Codice Fiscale verranno analizzati e confrontati, ma non memorizzati permanentemente.
+          </p>
+        </div>
       </div>
     </form>
   );

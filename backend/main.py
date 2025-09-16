@@ -1,10 +1,17 @@
 # backend/main.py
 
+import sys
+import os
+from pathlib import Path
+
+# Add the backend directory to Python path
+backend_dir = Path(__file__).parent
+sys.path.insert(0, str(backend_dir))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.api import analyze, feedback, export, ehr
-from backend.db.session import init_db
-import os
+from api import analyze, feedback, export, ehr, analyze_fixed
+from db.session import init_db
 from dotenv import load_dotenv
 import uvicorn
 
@@ -42,6 +49,7 @@ init_db()
 
 # Include API routes
 app.include_router(analyze.router, prefix="/api/analyze", tags=["Analisi"])
+app.include_router(analyze_fixed.router, prefix="/analyze-fixed", tags=["Analisi Fixed"])
 app.include_router(feedback.router, prefix="/api/feedback", tags=["Feedback"])
 app.include_router(export.router, prefix="/api/export", tags=["Export"])
 app.include_router(ehr.router, prefix="/api/ehr", tags=["Integrazione EHR"])
@@ -52,6 +60,6 @@ def read_root():
 
 # Run the server directly if this file is executed
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8006))
+    port = int(os.getenv("PORT", 8009))
     host = os.getenv("HOST", "0.0.0.0")
     uvicorn.run("backend.main:app", host=host, port=port, reload=True)

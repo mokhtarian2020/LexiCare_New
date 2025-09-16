@@ -1,0 +1,38 @@
+[
+  {
+    "id": "2307df2b-6e9c-4528-9461-706d22900d0b",
+    "patient_cf": "SMMNNT42E67F839D",
+    "patient_name": "Sommese Antonietta",
+    "report_type": "Esame Chimico Fisico Delle Urine",
+    "report_date": "2024-05-01T00:00:00",
+    "file_path": "backend/storage/95c12887-922e-4e6a-8c16-781ac9ac2232_report_2024_05_01_modified.pdf",
+    "extracted_text": "A.S.L. NAPOLI 1 CENTRO\n\"P.O. OSPEDALE DEL MARE\"\nUOC PATOLOGIA CLINICA\nDirettore Dr.ssa Flavia Ingala\nViale delle Metamorfosi 80147 NAPOLI\nlab.ospmare@libero.it\nTel. 081-18775094\nCod. : 68511    Sig. SOMMESE ANTONIETTA\nProvenienza: Medicina d'Urgenza    C.F. SMMNNT42E67F839D\nNosologico:    D.Nasc. 27/05/1942\nAccettato il : 01/05/2024\nRefertato il : 01/05/2024\nESAME CHIMICO FISICO DELLE URINE\nColore: GIALLO PAGLIERINO\nAspetto: VELATO\npH: 5,5 (5.5 - 6.5)\nGlucosio: ASSENTE mg/dl (ASSENTE)\nProteine: 45 * mg/dl (0 - 10)\nEmoglobina: 10,00 * mg/dl (ABNORMALE)\nCorpi Chetonici: ASSENTI mg/dl (ASSENTE)\nBilirubina: ASSENTE mg/dl (ASSENTE)\nUrobilinogeno: 0,20 EU/dl (0 - 1.0)\nPeso Specifico: 1,019 (1.005 - 1.020)\nNitriti: ASSENTI\nEsterasi Leucocitaria: 75,0 * Leu/ul\nSEDIMENTO: Tappeto di Emazie - Rari Leucociti\n",
+    "ai_diagnosis": "Proteinuria",
+    "ai_classification": "moderato",
+    "doctor_diagnosis": "ppppp",
+    "doctor_classification": "moderato",
+    "doctor_comment": "fdfgfsdaf",
+    "comparison_to_previous": "nessun confronto disponibile",
+    "comparison_explanation": "Non esiste un referto precedente con lo stesso titolo per il paziente.",
+    "created_at": "2025-09-08T13:11:24.095940",
+    "report_category": "laboratory"
+  },
+  {
+    "id": "3609a09e-1db9-491c-9bbd-d3bbcc3b5cbd",
+    "patient_cf": "SMMNNT42E67F839D",
+    "patient_name": "Sommese Antonietta",
+    "report_type": "Esame Chimico Fisico Delle Urine",
+    "report_date": "2024-05-01T00:00:00",
+    "file_path": "backend/storage/a9695dc6-f274-40cc-bd09-6a1f7a68f37e_report_2024_05_01_modified.pdf",
+    "extracted_text": "A.S.L. NAPOLI 1 CENTRO\n\"P.O. OSPEDALE DEL MARE\"\nUOC PATOLOGIA CLINICA\nDirettore Dr.ssa Flavia Ingala\nViale delle Metamorfosi 80147 NAPOLI\nlab.ospmare@libero.it\nTel. 081-18775094\nCod. : 68511    Sig. SOMMESE ANTONIETTA\nProvenienza: Medicina d'Urgenza    C.F. SMMNNT42E67F839D\nNosologico:    D.Nasc. 27/05/1942\nAccettato il : 01/05/2024\nRefertato il : 01/05/2024\nESAME CHIMICO FISICO DELLE URINE\nColore: GIALLO PAGLIERINO\nAspetto: VELATO\npH: 5,5 (5.5 - 6.5)\nGlucosio: ASSENTE mg/dl (ASSENTE)\nProteine: 45 * mg/dl (0 - 10)\nEmoglobina: 10,00 * mg/dl (ABNORMALE)\nCorpi Chetonici: ASSENTI mg/dl (ASSENTE)\nBilirubina: ASSENTE mg/dl (ASSENTE)\nUrobilinogeno: 0,20 EU/dl (0 - 1.0)\nPeso Specifico: 1,019 (1.005 - 1.020)\nNitriti: ASSENTI\nEsterasi Leucocitaria: 75,0 * Leu/ul\nSEDIMENTO: Tappeto di Emazie - Rari Leucociti\n",
+    "ai_diagnosis": "Proteinuria (45 mg/dl)",
+    "ai_classification": "moderato",
+    "doctor_diagnosis": "fffff",
+    "doctor_classification": "lieve",
+    "doctor_comment": "fffff",
+    "comparison_to_previous": "invariata",
+    "comparison_explanation": "Le proteine sono rimaste stabili (da 45.0 a 45.0 mg/dl) senza cambiamenti clinicamente significativi.",
+    "created_at": "2025-09-08T13:26:05.716583",
+    "report_category": "laboratory"
+  }
+]

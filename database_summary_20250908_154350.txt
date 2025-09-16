@@ -1,0 +1,43 @@
+LEXICARE DATABASE SUMMARY
+==================================================
+Export Date: 2025-09-08 15:43:50
+Total Reports: 2
+
+REPORT #1
+------------------------------
+ID: 2307df2b-6e9c-4528-9461-706d22900d0b
+Patient: Sommese Antonietta (CF: SMMNNT42E67F839D)
+Type: Esame Chimico Fisico Delle Urine
+Category: laboratory
+Date: 2024-05-01T00:00:00
+Created: 2025-09-08T13:11:24.095940
+AI Diagnosis: Proteinuria
+AI Classification: moderato
+Doctor Diagnosis: ppppp
+Doctor Classification: moderato
+Doctor Comment: fdfgfsdaf
+Comparison: nessun confronto disponibile
+Comparison Explanation: Non esiste un referto precedente con lo stesso titolo per il paziente....
+File Path: backend/storage/95c12887-922e-4e6a-8c16-781ac9ac2232_report_2024_05_01_modified.pdf
+
+==================================================
+
+REPORT #2
+------------------------------
+ID: 3609a09e-1db9-491c-9bbd-d3bbcc3b5cbd
+Patient: Sommese Antonietta (CF: SMMNNT42E67F839D)
+Type: Esame Chimico Fisico Delle Urine
+Category: laboratory
+Date: 2024-05-01T00:00:00
+Created: 2025-09-08T13:26:05.716583
+AI Diagnosis: Proteinuria (45 mg/dl)
+AI Classification: moderato
+Doctor Diagnosis: fffff
+Doctor Classification: lieve
+Doctor Comment: fffff
+Comparison: invariata
+Comparison Explanation: Le proteine sono rimaste stabili (da 45.0 a 45.0 mg/dl) senza cambiamenti clinicamente significativi....
+File Path: backend/storage/a9695dc6-f274-40cc-bd09-6a1f7a68f37e_report_2024_05_01_modified.pdf
+
+==================================================
+

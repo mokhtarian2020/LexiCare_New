@@ -1,7 +1,7 @@
 import os
 import uuid
 from sqlalchemy.orm import Session
-from backend.db.models import Report
+from db.models import Report
 from datetime import datetime
 from typing import Optional, List
 
@@ -18,16 +18,15 @@ def save_pdf(filename: str, content: bytes) -> str:
 # Insert report into DB
 def create_report(
     db, *,
-    patient_id, patient_cf, patient_name,
+    patient_cf, patient_name,
     report_type, report_date,
     file_path, extracted_text,
     ai_diagnosis, ai_classification
 ):
     report = Report(
-        patient_id   = patient_id,
-        patient_cf   = patient_cf,          # ✅
+        patient_cf   = patient_cf,
         patient_name = patient_name,
-        report_type  = report_type,
+        report_type = report_type,  # Exact title as extracted (e.g., "Eccocardiografia")
         report_date  = report_date,
         file_path    = file_path,
         extracted_text = extracted_text,
@@ -48,11 +47,11 @@ def update_report_comparison(db: Session, report_id, comparison: dict):
     db.commit()
     return True
 
-# Retrieve most recent report text for comparison
-def get_most_recent_report_text(db: Session, patient_id, report_type):
+# Retrieve most recent report text for comparison by patient CF and title
+def get_most_recent_report_text(db: Session, patient_cf, report_type):
     latest = (
         db.query(Report)
-        .filter(Report.patient_id == patient_id, Report.report_type == report_type)
+        .filter(Report.patient_cf == patient_cf, Report.report_type == report_type)
         .order_by(Report.report_date.desc())
         .first()
     )
@@ -73,8 +72,9 @@ def save_feedback(db: Session, report_id, correct_diagnosis, correct_classificat
 def get_labeled_reports(db: Session):
     return db.query(Report).filter(Report.doctor_diagnosis.isnot(None)).all()
 
-# Get most recent report by codice fiscale and type
-def get_most_recent_report_text_by_cf(db: Session, patient_cf: str, report_type: str):
+# Get most recent report by codice fiscale and title
+def get_most_recent_report_text_by_cf_and_title(db: Session, patient_cf: str, report_type: str):
+    """Retrieve the most recent report text with the specified title for a patient"""
     latest = (
         db.query(Report)
         .filter(Report.patient_cf == patient_cf, Report.report_type == report_type)
@@ -83,12 +83,71 @@ def get_most_recent_report_text_by_cf(db: Session, patient_cf: str, report_type:
     )
     return latest.extracted_text if latest else None
 
-# Get all reports for a patient by codice fiscale with optional report type filtering
+# Get all reports for a patient by codice fiscale with optional title filtering
 def get_patient_reports(db: Session, patient_cf: str, report_type: Optional[str] = None) -> List[Report]:
-    """Retrieve all reports for a patient by their codice fiscale with optional report type filtering"""
+    """Retrieve all reports for a patient by their codice fiscale with optional title filtering"""
     query = db.query(Report).filter(Report.patient_cf == patient_cf)
     
     if report_type:
         query = query.filter(Report.report_type == report_type)
     
     return query.order_by(Report.report_date.desc()).all()
+
+# Get the most recent report of a specific title, regardless of patient
+def get_most_recent_report_text_by_title_only(db: Session, report_type: str):
+    """Retrieve the most recent report text with the specified title, regardless of which patient it belongs to"""
+    latest = (
+        db.query(Report)
+        .filter(Report.report_type == report_type)
+        .order_by(Report.report_date.desc())
+        .first()
+    )
+    return latest.extracted_text if latest else None
+
+# Get most recent report by codice fiscale and specific report title (exact match)
+def get_most_recent_report_by_title(db: Session, patient_cf: str, report_type: str):
+    """Retrieve the most recent report with exact matching report title for a patient"""
+    latest = (
+        db.query(Report)
+        .filter(Report.patient_cf == patient_cf, Report.report_type == report_type)
+        .order_by(Report.report_date.desc())
+        .first()
+    )
+    return latest
+
+# Get most recent report text by codice fiscale and specific report title (exact match)
+def get_most_recent_report_text_by_title(db: Session, patient_cf: str, report_type: str):
+    """
+    Retrieve the most recent report text with exact matching report title for a patient.
+    Uses created_at timestamp to handle same-day reports correctly since PDFs typically
+    don't contain hour information.
+    """
+    latest = (
+        db.query(Report)
+        .filter(Report.patient_cf == patient_cf, Report.report_type == report_type)
+        .order_by(
+            Report.report_date.desc(),    # Sort by medical date first
+            Report.created_at.desc(),     # Then by upload time (most recent)
+            Report.id.desc()              # Finally by ID as last resort
+        )
+        .first()
+    )
+    return latest.extracted_text if latest else None
+
+# Get most recent report of a specific report title, regardless of patient
+def get_most_recent_report_text_by_title_only(db: Session, report_type: str):
+    """
+    Retrieve the most recent report text with exact matching report title, regardless of patient.
+    Uses created_at timestamp to handle same-day reports correctly.
+    """
+    latest = (
+        db.query(Report)
+        .filter(Report.report_type == report_type)
+        .order_by(
+            Report.report_date.desc(),    # Sort by medical date first
+            Report.created_at.desc(),     # Then by upload time (most recent)
+            Report.id.desc()              # Finally by ID as last resort
+        )
+        .first()
+    )
+    return latest.extracted_text if latest else None
