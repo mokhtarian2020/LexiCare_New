@@ -49,7 +49,8 @@ RISULTATI ESAME URINE:
 VALORI ALTERATI: {abnormal_str}
 
 Fornisci una diagnosi limitata ESCLUSIVAMENTE alle condizioni del tratto urinario e renale.
-Rispondi in JSON: {{"diagnosis": "diagnosi specifica per apparato urinario", "classification": "lieve|moderato|grave"}}
+IMPORTANTE: Includi i valori specifici alterati nella diagnosi (esempio: "Proteinuria (45 mg/dl)")
+Rispondi in JSON: {{"diagnosis": "diagnosi specifica per apparato urinario con valori", "classification": "lieve|moderato|grave"}}
 """
 
     # BLOOD CHEMISTRY - Only metabolic and liver conditions
@@ -78,7 +79,8 @@ RISULTATI CHIMICA CLINICA:
 VALORI ALTERATI: {abnormal_str}
 
 Fornisci una diagnosi limitata ESCLUSIVAMENTE alle condizioni metaboliche e biochimiche.
-Rispondi in JSON: {{"diagnosis": "diagnosi specifica per chimica clinica", "classification": "lieve|moderato|grave"}}
+IMPORTANTE: Includi i valori specifici alterati nella diagnosi (esempio: "Ipercolesterolemia (280 mg/dl)")
+Rispondi in JSON: {{"diagnosis": "diagnosi specifica per chimica clinica con valori", "classification": "lieve|moderato|grave"}}
 """
 
     # HEMATOLOGY/CBC - Only blood cell conditions
@@ -107,7 +109,8 @@ RISULTATI EMOCROMO:
 VALORI ALTERATI: {abnormal_str}
 
 Fornisci una diagnosi limitata ESCLUSIVAMENTE alle condizioni ematologiche.
-Rispondi in JSON: {{"diagnosis": "diagnosi specifica per emocromo", "classification": "lieve|moderato|grave"}}
+IMPORTANTE: Includi i valori specifici alterati nella diagnosi (esempio: "Anemia microcitica (Hb 9.5 g/dl)")
+Rispondi in JSON: {{"diagnosis": "diagnosi specifica per emocromo con valori", "classification": "lieve|moderato|grave"}}
 """
 
     # COAGULATION - Only clotting disorders
@@ -134,7 +137,8 @@ RISULTATI COAGULAZIONE:
 VALORI ALTERATI: {abnormal_str}
 
 Fornisci una diagnosi limitata ESCLUSIVAMENTE ai disturbi della coagulazione.
-Rispondi in JSON: {{"diagnosis": "diagnosi specifica per coagulazione", "classification": "lieve|moderato|grave"}}
+IMPORTANTE: Includi i valori specifici alterati nella diagnosi (esempio: "Ipocoagulabilità (PT 25 sec)")
+Rispondi in JSON: {{"diagnosis": "diagnosi specifica per coagulazione con valori", "classification": "lieve|moderato|grave"}}
 """
 
     # PATHOLOGY REPORTS - Anatomical pathology, histology, cytology
@@ -161,7 +165,8 @@ REFERTO ANATOMOPATOLOGICO:
 {lab_data}
 
 Fornisci una diagnosi anatomopatologica precisa e classificazione della gravità.
-Rispondi in JSON: {{"diagnosis": "diagnosi anatomopatologica", "classification": "lieve|moderato|grave"}}
+IMPORTANTE: Includi dimensioni o percentuali specifiche quando rilevanti (esempio: "Adenocarcinoma moderatamente differenziato (30% del campione)")
+Rispondi in JSON: {{"diagnosis": "diagnosi anatomopatologica con dettagli", "classification": "lieve|moderato|grave"}}
 """
 
     # RADIOLOGY REPORTS - Imaging studies
@@ -188,7 +193,8 @@ REFERTO RADIOLOGICO:
 {lab_data}
 
 Fornisci una diagnosi radiologica precisa e classificazione della gravità.
-Rispondi in JSON: {{"diagnosis": "diagnosi radiologica", "classification": "lieve|moderato|grave"}}
+IMPORTANTE: Includi misure specifiche quando disponibili (esempio: "Epatosplenomegalia (fegato 18cm, milza 14cm)")
+Rispondi in JSON: {{"diagnosis": "diagnosi radiologica con misure", "classification": "lieve|moderato|grave"}}
 """
 
     # GENERIC LABORATORY - Conservative approach
@@ -205,7 +211,8 @@ RISULTATI:
 VALORI ALTERATI: {abnormal_str}
 
 Fornisci una diagnosi conservativa e specifica per questo tipo di esame.
-Rispondi in JSON: {{"diagnosis": "diagnosi appropriata per {report_type}", "classification": "lieve|moderato|grave"}}
+IMPORTANTE: Includi i valori specifici alterati nella diagnosi quando appropriato.
+Rispondi in JSON: {{"diagnosis": "diagnosi appropriata per {report_type} con valori", "classification": "lieve|moderato|grave"}}
 """
 
 def analyze_text_with_medgemma(report_text: str) -> dict:
@@ -519,61 +526,170 @@ def analyze_laboratory_report(metadata: dict) -> dict:
                 "errore": str(e)
             }
 
-def create_fallback_diagnosis(report_type: str, abnormal_values: list) -> str:
-    """Create a simple diagnosis based on test type and abnormal values when AI fails"""
+def create_value_specific_diagnosis(report_type: str, abnormal_values: list, lab_values: dict = None) -> str:
+    """Create detailed diagnosis with specific lab values included"""
     
     if not abnormal_values:
         return "Parametri di laboratorio nei limiti della norma"
     
     report_upper = report_type.upper()
+    diagnoses = []
     
     if "URINE" in report_upper or "CHIMICO FISICO" in report_upper:
-        if any("proteine" in val.lower() for val in abnormal_values):
-            return "Proteinuria rilevata - controllo nefrologico consigliato"
-        elif any("leucocit" in val.lower() or "esterasi" in val.lower() for val in abnormal_values):
-            return "Possibile infezione del tratto urinario - controllo consigliato"
-        elif any("emoglobina" in val.lower() or "sangue" in val.lower() for val in abnormal_values):
-            # Check if Emoglobina value is truly abnormal (> 0.5 mg/dl)
-            for val in abnormal_values:
-                if "emoglobina" in val.lower():
-                    try:
-                        # Extract numeric value and handle Italian decimal format
-                        num_str = val.split(":")[1].split()[0].strip().replace(",", ".")
-                        value = float(num_str)
-                        if value <= 0.5:  # Skip if within normal range
-                            continue
-                    except (ValueError, IndexError):
-                        # If we can't parse the value, skip this check
+        # Check for Proteinuria with specific value
+        for val in abnormal_values:
+            if "proteine" in val.lower():
+                # Extract value from string like "Proteine: 15 mg/dl"
+                try:
+                    parts = val.split(":")
+                    if len(parts) > 1:
+                        value_part = parts[1].strip().split()[0]
+                        unit_part = parts[1].strip().split()[1] if len(parts[1].strip().split()) > 1 else "mg/dl"
+                        diagnoses.append(f"Proteinuria ({value_part} {unit_part})")
+                    else:
+                        diagnoses.append("Proteinuria")
+                except:
+                    diagnoses.append("Proteinuria")
+                break
+        
+        # Check for UTI with specific values
+        for val in abnormal_values:
+            if "leucocit" in val.lower() or "esterasi" in val.lower():
+                try:
+                    parts = val.split(":")
+                    if len(parts) > 1:
+                        value_part = parts[1].strip().split()[0]
+                        unit_part = parts[1].strip().split()[1] if len(parts[1].strip().split()) > 1 else ""
+                        test_name = "Esterasi" if "esterasi" in val.lower() else "Leucociti"
+                        diagnoses.append(f"Possibile infezione urinaria ({test_name}: {value_part} {unit_part})")
+                    else:
+                        diagnoses.append("Possibile infezione del tratto urinario")
+                except:
+                    diagnoses.append("Possibile infezione del tratto urinario")
+                break
+                
+        # Check for Hematuria with value filtering
+        for val in abnormal_values:
+            if "emoglobina" in val.lower():
+                try:
+                    # Extract numeric value and handle Italian decimal format
+                    num_str = val.split(":")[1].split()[0].strip().replace(",", ".")
+                    value = float(num_str)
+                    if value <= 0.5:  # Skip if within normal range
                         continue
-                    return "Ematuria rilevata - controllo urologico consigliato"
-            # Only check for "sangue" if we haven't already returned for emoglobina
-            if any("sangue" in val.lower() for val in abnormal_values):
-                return "Ematuria rilevata - controllo urologico consigliato"
-        else:
-            return "Alterazioni nell'esame delle urine - controllo medico consigliato"
-    
+                    diagnoses.append(f"Ematuria (Emoglobina: {val.split(':')[1].strip()})")
+                except (ValueError, IndexError):
+                    diagnoses.append("Ematuria")
+                break
+        
+        # Check for blood with specific values
+        if not any("emoglobina" in d.lower() for d in diagnoses):
+            for val in abnormal_values:
+                if "sangue" in val.lower():
+                    try:
+                        parts = val.split(":")
+                        if len(parts) > 1:
+                            value_part = parts[1].strip()
+                            diagnoses.append(f"Ematuria (Sangue: {value_part})")
+                        else:
+                            diagnoses.append("Ematuria")
+                    except:
+                        diagnoses.append("Ematuria")
+                    break
+                    
     elif "EMOCROMO" in report_upper or "SANGUE" in report_upper:
-        if any("hgb" in val.lower() or "emoglobina" in val.lower() for val in abnormal_values):
-            return "Possibile anemia - controllo ematologico consigliato"
-        elif any("wbc" in val.lower() or "leucociti" in val.lower() for val in abnormal_values):
-            return "Alterazioni dei globuli bianchi - controllo consigliato"
-        elif any("plt" in val.lower() or "piastrine" in val.lower() for val in abnormal_values):
-            return "Alterazioni delle piastrine - controllo ematologico consigliato"
-        else:
-            return "Alterazioni nell'emocromo - controllo ematologico consigliato"
+        # Enhanced hematology diagnoses with values
+        for val in abnormal_values:
+            if any(term in val.lower() for term in ["emoglobina", "hgb", "hb"]):
+                try:
+                    parts = val.split(":")
+                    if len(parts) > 1:
+                        value_part = parts[1].strip()
+                        diagnoses.append(f"Anemia (Emoglobina: {value_part})")
+                    else:
+                        diagnoses.append("Anemia")
+                except:
+                    diagnoses.append("Anemia")
+            elif any(term in val.lower() for term in ["leucociti", "wbc", "globuli bianchi"]):
+                try:
+                    parts = val.split(":")
+                    if len(parts) > 1:
+                        value_part = parts[1].strip()
+                        diagnoses.append(f"Alterazione leucocitaria (WBC: {value_part})")
+                    else:
+                        diagnoses.append("Alterazione dei globuli bianchi")
+                except:
+                    diagnoses.append("Alterazione dei globuli bianchi")
+            elif any(term in val.lower() for term in ["piastrine", "plt"]):
+                try:
+                    parts = val.split(":")
+                    if len(parts) > 1:
+                        value_part = parts[1].strip()
+                        diagnoses.append(f"Alterazione piastrinica (PLT: {value_part})")
+                    else:
+                        diagnoses.append("Alterazione delle piastrine")
+                except:
+                    diagnoses.append("Alterazione delle piastrine")
     
     elif "CHIMICA" in report_upper or "BIOCHIMICA" in report_upper:
-        if any("glucos" in val.lower() for val in abnormal_values):
-            return "Alterazioni glicemiche - controllo diabetologico consigliato"
-        elif any("got" in val.lower() or "ast" in val.lower() or "alt" in val.lower() for val in abnormal_values):
-            return "Alterazioni epatiche - controllo epatologico consigliato"
-        elif any("creatinina" in val.lower() or "urea" in val.lower() for val in abnormal_values):
-            return "Alterazioni della funzione renale - controllo nefrologico consigliato"
-        else:
-            return "Alterazioni nella chimica clinica - controllo medico consigliato"
+        # Enhanced chemistry diagnoses with values
+        for val in abnormal_values:
+            if any(term in val.lower() for term in ["glucosio", "glicemia"]):
+                try:
+                    parts = val.split(":")
+                    if len(parts) > 1:
+                        value_part = parts[1].strip()
+                        diagnoses.append(f"Iperglicemia (Glucosio: {value_part})")
+                    else:
+                        diagnoses.append("Alterazione glicemica")
+                except:
+                    diagnoses.append("Alterazione glicemica")
+            elif any(term in val.lower() for term in ["creatinina"]):
+                try:
+                    parts = val.split(":")
+                    if len(parts) > 1:
+                        value_part = parts[1].strip()
+                        diagnoses.append(f"Disfunzione renale (Creatinina: {value_part})")
+                    else:
+                        diagnoses.append("Possibile disfunzione renale")
+                except:
+                    diagnoses.append("Possibile disfunzione renale")
+            elif any(term in val.lower() for term in ["alt", "ast", "got", "gpt"]):
+                try:
+                    parts = val.split(":")
+                    if len(parts) > 1:
+                        value_part = parts[1].strip()
+                        test_name = "ALT" if "alt" in val.lower() or "gpt" in val.lower() else "AST"
+                        diagnoses.append(f"Alterazione epatica ({test_name}: {value_part})")
+                    else:
+                        diagnoses.append("Possibile alterazione epatica")
+                except:
+                    diagnoses.append("Possibile alterazione epatica")
     
-    else:
-        return f"Alterazioni rilevate in {len(abnormal_values)} parametri - controllo medico consigliato"
+    # If no specific diagnoses found, create generic one with values
+    if not diagnoses:
+        generic_findings = []
+        for val in abnormal_values:
+            try:
+                test_name = val.split(":")[0].strip()
+                value_part = val.split(":")[1].strip() if ":" in val else val
+                generic_findings.append(f"{test_name} ({value_part})")
+            except:
+                generic_findings.append(val)
+        
+        if generic_findings:
+            return f"Alterazioni di laboratorio: {', '.join(generic_findings[:3])}"
+        else:
+            return "Alterazioni nei parametri di laboratorio - controllo medico consigliato"
+    
+    # Combine diagnoses
+    return " | ".join(diagnoses)
+
+def create_fallback_diagnosis(report_type: str, abnormal_values: list) -> str:
+    """Create a simple diagnosis based on test type and abnormal values when AI fails"""
+    
+    # Use the new value-specific diagnosis function
+    return create_value_specific_diagnosis(report_type, abnormal_values)
 
 def validate_diagnosis_scope(diagnosis: str, report_type: str) -> tuple[str, bool]:
     """Validate that diagnosis is appropriate for the test type and flag inappropriate ones"""
