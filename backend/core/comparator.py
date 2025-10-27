@@ -6,59 +6,43 @@
 import json, os
 import ollama
 from db import crud
+import logging
+
+logger = logging.getLogger(__name__)
 
 MODEL_NAME = os.getenv("OLLAMA_MODEL", "alibayram/medgemma")
 
-# These functions are replaced by the title-based functions below and kept only for backward compatibility
-def compare_with_previous_reports(db, patient_cf: str, report_type: str, new_text: str) -> dict:
+def _perform_comparison_chronological(db, patient_cf: str, report_type: str, previous_text: str, new_text: str) -> dict:
     """
-    DEPRECATED: Use compare_with_previous_report_by_title instead.
-    Cerca l'ultimo referto dello stesso paziente (CF) e dello stesso titolo,
-    poi chiede a MedGemma di dire se il caso è peggiorato / migliorato / invariato.
+    Perform chronological comparison ensuring proper temporal order.
+    This function determines which report is chronologically older/newer and 
+    compares them in the correct temporal sequence.
     """
-    return compare_with_previous_report_by_title(db, patient_cf, report_type, new_text)
-
-def compare_with_latest_report_of_type(db, report_type: str, new_text: str) -> dict:
-    """
-    DEPRECATED: Use compare_with_latest_report_by_title_only instead.
-    Cerca l'ultimo referto dello stesso tipo (titolo esatto), indipendentemente dal paziente,
-    poi chiede a MedGemma di dire se il caso è peggiorato / migliorato / invariato.
-    """
-    return compare_with_latest_report_by_title_only(db, report_type, new_text)
-
-def compare_with_previous_report_by_title(db, patient_cf: str, report_type: str, new_text: str) -> dict:
-    """
-    Cerca l'ultimo referto dello stesso paziente (CF) con lo stesso titolo esatto,
-    poi chiede a MedGemma di dire se il caso è peggiorato / migliorato / invariato.
-    Se non trova un referto precedente → status = 'nessun confronto disponibile'.
-    """
-    previous = crud.get_most_recent_report_text_by_title(db, patient_cf, report_type)
-
-    if not previous:
-        return {
-            "status": "nessun confronto disponibile",
-            "explanation": "Non esiste un referto precedente con lo stesso titolo per il paziente."
-        }
-
-    return _perform_comparison(previous, new_text)
-
-def compare_with_latest_report_by_title_only(db, report_type: str, new_text: str) -> dict:
-    """
-    Cerca l'ultimo referto con lo stesso titolo esatto (indipendentemente dal paziente),
-    poi chiede a MedGemma di dire se il caso è peggiorato / migliorato / invariato.
-    Utile per documenti senza Codice Fiscale.
-    Se non trova un referto precedente → status = 'nessun confronto disponibile'.
-    """
-    previous = crud.get_most_recent_report_text_by_title_only(db, report_type)
+    from db import crud
     
-    if not previous:
-        return {
-            "status": "nessun confronto disponibile",
-            "explanation": "Non esiste un referto precedente con lo stesso titolo."
-        }
+    try:
+        # Get all reports for this patient and report type to determine chronological order
+        all_reports = crud.get_chronological_reports_by_title(db, patient_cf, report_type)
         
-    return _perform_comparison(previous, new_text)
-    
+        if len(all_reports) < 2:
+            return _perform_comparison(previous_text, new_text)
+        
+        # Get the two most recent reports (chronologically)
+        older_report = all_reports[-2]  # Second to last (older)  
+        newer_report = all_reports[-1]  # Last (newer)
+        
+        print(f"🔍 Chronological Analysis:")
+        print(f"   📅 Older Report Date: {older_report.report_date}")
+        print(f"   📅 Newer Report Date: {newer_report.report_date}")
+        
+        # Always compare in chronological order: older report -> newer report
+        # This ensures we get "increased from X to Y" when values go from X (older) to Y (newer)
+        return _perform_comparison(older_report.extracted_text, newer_report.extracted_text)
+            
+    except Exception as e:
+        print(f"⚠️ Chronological comparison error: {e}, falling back to simple comparison")
+        return _perform_comparison(previous_text, new_text)
+
 def _perform_comparison(previous_text: str, new_text: str) -> dict:
     """Internal helper function to perform the actual comparison using AI"""
     prompt = f"""
@@ -161,3 +145,54 @@ def _fallback_comparison(previous_text: str, new_text: str) -> dict:
             "status": "errore",
             "explanation": f"Impossibile confrontare i referti: {str(e)}"
         }
+
+# These functions are replaced by the title-based functions below and kept only for backward compatibility
+def compare_with_previous_reports(db, patient_cf: str, report_type: str, new_text: str) -> dict:
+    """
+    DEPRECATED: Use compare_with_previous_report_by_title instead.
+    Cerca l'ultimo referto dello stesso paziente (CF) e dello stesso titolo,
+    poi chiede a MedGemma di dire se il caso è peggiorato / migliorato / invariato.
+    """
+    return compare_with_previous_report_by_title(db, patient_cf, report_type, new_text)
+
+def compare_with_latest_report_of_type(db, report_type: str, new_text: str) -> dict:
+    """
+    DEPRECATED: Use compare_with_latest_report_by_title_only instead.
+    Cerca l'ultimo referto dello stesso tipo (titolo esatto), indipendentemente dal paziente,
+    poi chiede a MedGemma di dire se il caso è peggiorato / migliorato / invariato.
+    """
+    return compare_with_latest_report_by_title_only(db, report_type, new_text)
+
+def compare_with_previous_report_by_title(db, patient_cf: str, report_type: str, new_text: str) -> dict:
+    """
+    Cerca l'ultimo referto dello stesso paziente (CF) con lo stesso titolo esatto,
+    poi chiede a MedGemma di dire se il caso è peggiorato / migliorato / invariato.
+    Se non trova un referto precedente → status = 'nessun confronto disponibile'.
+    """
+    previous = crud.get_most_recent_report_text_by_title(db, patient_cf, report_type)
+
+    if not previous:
+        return {
+            "status": "nessun confronto disponibile",
+            "explanation": "Non esiste un referto precedente con lo stesso titolo per il paziente."
+        }
+
+    return _perform_comparison_chronological(db, patient_cf, report_type, previous, new_text)
+
+def compare_with_latest_report_by_title_only(db, report_type: str, new_text: str) -> dict:
+    """
+    Cerca l'ultimo referto con lo stesso titolo esatto (indipendentemente dal paziente),
+    poi chiede a MedGemma di dire se il caso è peggiorato / miglioramento / invariato.
+    Utile per documenti senza Codice Fiscale.
+    Se non trova un referto precedente → status = 'nessun confronto disponibile'.
+    """
+    previous = crud.get_most_recent_report_text_by_title_only(db, report_type)
+    
+    if not previous:
+        return {
+            "status": "nessun confronto disponibile",
+            "explanation": "Non esiste un referto precedente con lo stesso titolo."
+        }
+        
+    # For reports without CF, we use empty string as patient_cf and get report_type as title
+    return _perform_comparison_chronological(db, "", report_type, previous, new_text)

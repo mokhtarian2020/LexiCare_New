@@ -134,6 +134,46 @@ def get_most_recent_report_text_by_title(db: Session, patient_cf: str, report_ty
     )
     return latest.extracted_text if latest else None
 
+# Get previous report text for comparison (excluding the current report being processed)
+def get_previous_report_text_by_title(db: Session, patient_cf: str, report_type: str, exclude_report_id: int = None):
+    """
+    Retrieve the most recent previous report text with exact matching report title for a patient,
+    excluding the specified report ID (useful when comparing against the current report).
+    """
+    query = (
+        db.query(Report)
+        .filter(Report.patient_cf == patient_cf, Report.report_type == report_type)
+    )
+    
+    if exclude_report_id:
+        query = query.filter(Report.id != exclude_report_id)
+    
+    latest = query.order_by(
+        Report.report_date.desc(),
+        Report.created_at.desc(),
+        Report.id.desc()
+    ).first()
+    
+    return latest.extracted_text if latest else None
+
+# Get chronological reports for comparison with dates
+def get_chronological_reports_by_title(db: Session, patient_cf: str, report_type: str):
+    """
+    Retrieve all reports with exact matching report title for a patient, ordered chronologically.
+    Returns full report objects with dates for proper chronological comparison.
+    """
+    reports = (
+        db.query(Report)
+        .filter(Report.patient_cf == patient_cf, Report.report_type == report_type)
+        .order_by(
+            Report.report_date.asc(),     # Sort by medical date ascending (oldest first)
+            Report.created_at.asc(),      # Then by upload time (oldest first)
+            Report.id.asc()               # Finally by ID as last resort
+        )
+        .all()
+    )
+    return reports
+
 # Get most recent report of a specific report title, regardless of patient
 def get_most_recent_report_text_by_title_only(db: Session, report_type: str):
     """

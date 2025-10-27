@@ -375,8 +375,23 @@ def analyze_laboratory_report(metadata: dict) -> dict:
                 categories[category] = []
             categories[category].append((test_name, test_data))
             
-            # Track abnormal values
+            # Track abnormal values with Emoglobina filtering
             if test_data.get('abnormal', False):
+                # Special handling for Emoglobina in urine tests - apply medical threshold
+                if (test_name.lower() == 'emoglobina' and 
+                    ("URINE" in report_type.upper() or "CHIMICO FISICO" in report_type.upper())):
+                    try:
+                        # Extract numeric value and handle Italian decimal format
+                        value_str = str(test_data['value']).replace(',', '.')
+                        value = float(value_str)
+                        if value <= 0.5:  # Skip if within normal range (≤ 0.5 mg/dl = normal)
+                            logger.info(f"🩺 Emoglobina {value} mg/dl is within normal range (≤0.5), not flagging as abnormal")
+                            continue
+                    except (ValueError, TypeError):
+                        # If we can't parse the value, treat as abnormal to be safe
+                        logger.warning(f"Could not parse Emoglobina value: {test_data['value']}, treating as abnormal")
+                        pass
+                
                 abnormal_values.append(f"{test_name}: {test_data['value']} {test_data.get('unit', '')}")
         
         # Build structured text
@@ -518,7 +533,22 @@ def create_fallback_diagnosis(report_type: str, abnormal_values: list) -> str:
         elif any("leucocit" in val.lower() or "esterasi" in val.lower() for val in abnormal_values):
             return "Possibile infezione del tratto urinario - controllo consigliato"
         elif any("emoglobina" in val.lower() or "sangue" in val.lower() for val in abnormal_values):
-            return "Ematuria rilevata - controllo urologico consigliato"
+            # Check if Emoglobina value is truly abnormal (> 0.5 mg/dl)
+            for val in abnormal_values:
+                if "emoglobina" in val.lower():
+                    try:
+                        # Extract numeric value and handle Italian decimal format
+                        num_str = val.split(":")[1].split()[0].strip().replace(",", ".")
+                        value = float(num_str)
+                        if value <= 0.5:  # Skip if within normal range
+                            continue
+                    except (ValueError, IndexError):
+                        # If we can't parse the value, skip this check
+                        continue
+                    return "Ematuria rilevata - controllo urologico consigliato"
+            # Only check for "sangue" if we haven't already returned for emoglobina
+            if any("sangue" in val.lower() for val in abnormal_values):
+                return "Ematuria rilevata - controllo urologico consigliato"
         else:
             return "Alterazioni nell'esame delle urine - controllo medico consigliato"
     
@@ -585,8 +615,48 @@ def analyze_radiology_report(metadata: dict) -> dict:
     
     logger.info(f"🏥 Analyzing radiology report with {len(full_text)} characters")
     
-    # Use general text analysis for radiology reports
-    return analyze_text_with_medgemma(full_text)
+    # Initialize list for abnormal findings
+    abnormal_findings = []
+    
+    # Define patterns for various types of abnormalities
+    patterns = [
+        # Vascular patterns
+        r"(placca|stenosi|ispessimento).+?([\d,]+%|[\d,]+\s*mm|diffuso)[^\.]*",
+        r"(incontinenza|insufficienza).+?([^\.]+)",
+        # General structural patterns
+        r"(alterazion[ei]|lesion[ei]).+?([^\.]+)",
+        # Specific measurements
+        r"IMT\s*>\s*[\d,]+\s*mm[^\.]*",
+        # Specific conditions
+        r"fibro-ateromasica.+?([^\.]+)",
+        r"occlusione.+?([^\.]+)"
+    ]
+    
+    # Extract abnormal findings
+    import re
+    for pattern in patterns:
+        matches = re.finditer(pattern, full_text, re.IGNORECASE)
+        for match in matches:
+            finding = match.group(0).strip()
+            # Only add if finding is substantial
+            if finding and len(finding) > 10:
+                # Clean up the finding
+                finding = finding.strip()
+                # Remove leading/trailing punctuation
+                finding = finding.strip('.,;: ')
+                # Add to list if not already present
+                if finding not in abnormal_findings:
+                    abnormal_findings.append(finding)
+    
+    logger.info(f"Found {len(abnormal_findings)} abnormal findings")
+    
+    # Get AI analysis
+    ai_result = analyze_text_with_medgemma(full_text)
+    
+    # Add abnormal findings to the result
+    ai_result["abnormal_findings"] = abnormal_findings
+    
+    return ai_result
 
 def analyze_pathology_report(metadata: dict) -> dict:
     """Analyze pathology reports using text-based AI analysis."""

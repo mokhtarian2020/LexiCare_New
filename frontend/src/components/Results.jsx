@@ -149,6 +149,34 @@ function Results({ results }) {
     }
   };
 
+  const getReportStatusDisplay = (report) => {
+    if (report.salvato) {
+      return {
+        text: "✓ REFERTO SALVATO",
+        color: "text-green-600",
+        bgColor: "border-green-500"
+      };
+    } else if (report.status === 'duplicate') {
+      return {
+        text: "📄 REFERTO GIÀ PRESENTE NEL SISTEMA",
+        color: "text-blue-600", 
+        bgColor: "border-blue-500"
+      };
+    } else if (!report.codice_fiscale) {
+      return {
+        text: "⚠ REFERTO ANALIZZATO (NON SALVATO - CODICE FISCALE MANCANTE)",
+        color: "text-yellow-600",
+        bgColor: "border-yellow-500"
+      };
+    } else {
+      return {
+        text: "⚠ REFERTO NON SALVATO",
+        color: "text-red-600",
+        bgColor: "border-red-500"
+      };
+    }
+  };
+
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-neutral-dark mb-4 flex items-center">
@@ -158,13 +186,15 @@ function Results({ results }) {
         Risultati Analisi ({results.length})
       </h2>
       
-      {results.map((r, i) => (
+      {results.map((r, i) => {
+        const statusInfo = getReportStatusDisplay(r);
+        return (
         <div key={i} className="bg-white rounded-lg shadow-card overflow-hidden">
           {/* Header della scheda */}
-          <div className={`p-4 border-l-4 ${r.salvato ? "border-green-500" : "border-yellow-500"}`}>
+          <div className={`p-4 border-l-4 ${statusInfo.bgColor}`}>
             <div>
-              <p className={`font-semibold ${r.salvato ? "text-green-600" : "text-yellow-600"} text-sm mb-1`}>
-                {r.salvato ? "✓ REFERTO SALVATO" : "⚠ REFERTO ANALIZZATO (NON SALVATO - CODICE FISCALE MANCANTE)"}
+              <p className={`font-semibold ${statusInfo.color} text-sm mb-1`}>
+                {statusInfo.text}
               </p>
               <h3 className="font-bold text-lg text-gray-800">
                 {r.tipo_referto || "Referto"}
@@ -293,7 +323,8 @@ function Results({ results }) {
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {/* Sezione di riepilogo comparazioni */}
       {comparisonResults.length > 0 && (

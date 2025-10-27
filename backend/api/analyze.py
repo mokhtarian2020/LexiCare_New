@@ -12,12 +12,201 @@ from core.comparator import (compare_with_previous_reports, compare_with_latest_
                                     compare_with_previous_report_by_title, compare_with_latest_report_by_title_only)
 from db import crud
 from db.session import get_db
+from db.models import Report
+from sqlalchemy.orm import Session
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+def extract_key_values_from_text(text, report_type):
+    """Extract key values from text based on report type for comparison"""
+    import re
+    key_values = {}
+    
+    # Determine report category from type
+    report_lower = report_type.lower()
+    
+    if any(keyword in report_lower for keyword in ['urine', 'sangue', 'laboratorio', 'chimico', 'ematochimici']):
+        # LABORATORY REPORTS - Extract numerical values
+        lab_patterns = [
+            (r'Proteine.*?([0-9,\.]+).*?mg/dl', 'Proteine'),
+            (r'Glucosio.*?([0-9,\.]+).*?mg/dl', 'Glucosio'),
+            (r'Creatinina.*?([0-9,\.]+).*?mg/dl', 'Creatinina'),
+            (r'Emoglobina.*?([0-9,\.]+).*?mg/dl', 'Emoglobina'),
+            (r'Urea.*?([0-9,\.]+).*?mg/dl', 'Urea'),
+            (r'Colesterolo.*?([0-9,\.]+)', 'Colesterolo'),
+            (r'Trigliceridi.*?([0-9,\.]+)', 'Trigliceridi'),
+            (r'pH.*?([0-9,\.]+)', 'pH'),
+            # Alternative patterns
+            (r'Proteine[^\n]*?([0-9,\.]+)', 'Proteine_alt'),
+            (r'Glucosio[^\n]*?([0-9,\.]+)', 'Glucosio_alt'),
+            (r'Emoglobina[^\n]*?([0-9,\.]+)', 'Emoglobina_alt')
+        ]
+        
+        for pattern, param_name in lab_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            if matches:
+                key_values[param_name] = matches[0]
+    
+    elif any(keyword in report_lower for keyword in ['radiolog', 'ecografia', 'tac', 'risonanza', 'rx', 'tc', 'rm']):
+        # RADIOLOGY REPORTS - Extract key findings and measurements
+        radiology_patterns = [
+            (r'dimensioni.*?([0-9,\.]+\s*[x×]\s*[0-9,\.]+)', 'dimensioni'),
+            (r'diametro.*?([0-9,\.]+\s*(?:mm|cm))', 'diametro'),
+            (r'spessore.*?([0-9,\.]+\s*(?:mm|cm))', 'spessore'),
+            (r'(lesione|massa|nodulo|formazione).*?([0-9,\.]+\s*(?:mm|cm))', 'lesione_size'),
+            # Key findings
+            (r'(normale|regolare|nella norma)', 'normale'),
+            (r'(alterazioni|anomalie|patologico)', 'alterazioni'),
+            (r'(versamento|liquido)', 'versamento'),
+            (r'(calcificazioni)', 'calcificazioni'),
+            (r'(dilatazione)', 'dilatazione'),
+            # Specific organ findings
+            (r'fegato.*?(normale|ingrandito|ridotto)', 'fegato'),
+            (r'reni.*?(normale|dilatazione|calcoli)', 'reni'),
+            (r'cuore.*?(normale|ingrandito)', 'cuore')
+        ]
+        
+        for pattern, param_name in radiology_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
+            if matches:
+                if isinstance(matches[0], tuple):
+                    key_values[param_name] = matches[0][0] if matches[0][0] else matches[0][1]
+                else:
+                    key_values[param_name] = matches[0]
+    
+    elif any(keyword in report_lower for keyword in ['biopsia', 'istolog', 'citolog', 'patolog', 'anatomia']):
+        # PATHOLOGY REPORTS - Extract diagnostic terms and classifications
+        pathology_patterns = [
+            (r'(maligno|benigno|neoplasia)', 'malignancy'),
+            (r'(carcinoma|adenocarcinoma|sarcoma)', 'tumor_type'),
+            (r'grado.*?([I-IV]|[1-4])', 'grade'),
+            (r'stadio.*?([I-IV]|[1-4])', 'stage'),
+            (r'(positivo|negativo).*?(recettori|ER|PR|HER2)', 'receptors'),
+            (r'ki.?67.*?([0-9,\.]+%)', 'ki67'),
+            (r'dimensioni.*?([0-9,\.]+\s*(?:mm|cm))', 'tumor_size'),
+            # Specific findings
+            (r'(infiammazione|flogosi)', 'inflammation'),
+            (r'(fibrosi)', 'fibrosis'),
+            (r'(necrosi)', 'necrosis'),
+            (r'(displasia)', 'dysplasia'),
+            (r'margini.*?(liberi|coinvolti)', 'margins')
+        ]
+        
+        for pattern, param_name in pathology_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
+            if matches:
+                if isinstance(matches[0], tuple):
+                    key_values[param_name] = matches[0][0] if matches[0][0] else matches[0][1]
+                else:
+                    key_values[param_name] = matches[0]
+    
+    else:
+        # GENERIC REPORTS - Extract common medical terms and dates
+        generic_patterns = [
+            (r'data.*?([0-9]{1,2}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{4})', 'data'),
+            (r'diagnosi.*?([A-Za-z\s]{10,50})', 'diagnosi'),
+            (r'terapia.*?([A-Za-z\s]{10,50})', 'terapia'),
+            (r'([0-9,\.]+\s*(?:mg|ml|cm|mm))', 'measurements')
+        ]
+        
+        for pattern, param_name in generic_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            if matches:
+                key_values[param_name] = matches[0]
+    
+    return key_values
+
+def reports_have_identical_values(existing_report: Report, new_text, report_type):
+    """Check if two reports have identical key values based on report type"""
+    existing_values = extract_key_values_from_text(existing_report.extracted_text, report_type)
+    new_values = extract_key_values_from_text(new_text, report_type)
+    
+    # Different thresholds based on report type
+    report_lower = report_type.lower()
+    
+    if any(keyword in report_lower for keyword in ['urine', 'sangue', 'laboratorio', 'chimico', 'ematochimici']):
+        # Laboratory: Need at least 3 matching values, 80% similarity
+        min_values = 3
+        similarity_threshold = 0.8
+    elif any(keyword in report_lower for keyword in ['radiolog', 'ecografia', 'tac', 'risonanza', 'rx', 'tc', 'rm']):
+        # Radiology: Need at least 2 matching findings, 70% similarity
+        min_values = 2
+        similarity_threshold = 0.7
+    elif any(keyword in report_lower for keyword in ['biopsia', 'istolog', 'citolog', 'patolog', 'anatomia']):
+        # Pathology: Need at least 2 matching diagnostic terms, 75% similarity
+        min_values = 2
+        similarity_threshold = 0.75
+    else:
+        # Generic: Basic matching
+        min_values = 2
+        similarity_threshold = 0.6
+    
+    # Must have minimum matching values
+    if len(existing_values) < min_values or len(new_values) < min_values:
+        return False
+    
+    matches = 0
+    total_keys = max(len(existing_values), len(new_values))
+    
+    for key, value in existing_values.items():
+        if key in new_values:
+            existing_val = str(value).strip().lower()
+            new_val = str(new_values[key]).strip().lower()
+            
+            # Exact match or very similar (for measurements with slight variations)
+            if existing_val == new_val or (
+                key.endswith('_alt') and abs(len(existing_val) - len(new_val)) <= 2
+            ):
+                matches += 1
+    
+    # Calculate similarity ratio
+    similarity_ratio = matches / total_keys if total_keys > 0 else 0
+    
+    return similarity_ratio >= similarity_threshold and matches >= min_values
+
+def check_duplicate_report(db: Session, meta, extracted_text: str):
+    """Check if a report with identical CF + Date + Type + Content already exists"""
+    try:
+        report_type = meta.get('report_type')
+        codice_fiscale = meta.get('codice_fiscale')
+        report_date = meta.get('report_date')
+        
+        # Extract key values from new text based on report type
+        key_values = extract_key_values_from_text(extracted_text, report_type)
+        
+        if not key_values:
+            print(f"🔍 No key values extracted for duplicate check")
+            return None, False
+        
+        # Get reports with EXACT match on CF + Date + Type (potential duplicates)
+        existing_reports = db.query(Report).filter(
+            Report.report_type == report_type,
+            Report.patient_cf == codice_fiscale,
+            Report.report_date == report_date  # Same CF + Date + Type
+        ).all()
+        
+        # Debug: Show what reports we're checking
+        print(f"🔍 Duplicate check: Found {len(existing_reports)} reports with same CF/Date/Type")
+        
+        # Check for content similarity only among reports with same CF + Date + Type
+        for report in existing_reports:
+            print(f"   Checking report ID {report.id} from {report.report_date}")
+            is_duplicate = reports_have_identical_values(report, extracted_text, report_type)
+            print(f"   Result: {'DUPLICATE' if is_duplicate else 'DIFFERENT'}")
+            if is_duplicate:
+                print(f"   🚨 DUPLICATE FOUND: Same CF + Date + Type + Content as report saved on {report.created_at}")
+                return report, True
+        
+        print(f"   ✅ No duplicates found - unique combination of CF/Date/Type/Content")
+        return None, False
+        
+    except Exception as e:
+        print(f"Error checking duplicates: {e}")
+        return None, False
 
 
 @router.post("/", summary="Analizza uno o più referti PDF")
@@ -238,6 +427,40 @@ async def analyze_documents(
                 report_category = meta.get("report_category", "laboratory")
                 logger.info(f"Using report title for database storage: {report_type} (category: {report_category})")
                 
+                # *** CHECK FOR DUPLICATE REPORTS BEFORE SAVING ***
+                logger.info(f"Checking for duplicate reports")
+                # Create a proper meta dict for duplicate checking
+                check_meta = {
+                    'report_type': report_type,
+                    'codice_fiscale': codice_fiscale,
+                    'report_date': report_dt  # Add report date for duplicate checking
+                }
+                duplicate_report, is_duplicate = check_duplicate_report(db, check_meta, full_text)
+                
+                if is_duplicate and duplicate_report:
+                    logger.info(f"Duplicate report detected - ID: {duplicate_report.id}")
+                    result_obj = {
+                        "salvato"            : False,
+                        "messaggio"          : f"Errore nel salvataggio del referto: Documento già presente nel database (salvato il {duplicate_report.created_at.strftime('%d/%m/%Y %H:%M')}), ma risultati analisi forniti",
+                        "status"             : "duplicate",
+                        "diagnosi_ai"        : duplicate_report.ai_diagnosis,
+                        "classificazione_ai" : duplicate_report.ai_classification,
+                        "codice_fiscale"     : codice_fiscale,
+                        "tipo_referto"       : report_type,
+                        "nome_file"          : filename,
+                        "nome_paziente"      : meta.get("patient_name"),
+                        "data_referto"       : meta.get("report_date"),
+                        "original_save_date" : duplicate_report.created_at.strftime('%d/%m/%Y %H:%M')
+                    }
+                    
+                    # Add comparison if exists
+                    if duplicate_report.comparison_to_previous:
+                        result_obj["situazione"] = duplicate_report.comparison_to_previous
+                        result_obj["spiegazione"] = duplicate_report.comparison_explanation
+                    
+                    risultati.append(result_obj)
+                    continue  # Skip to next file without saving
+                
                 # *** IMPORTANT: Check for previous report BEFORE saving the new one ***
                 logger.info(f"Looking for previous reports before saving new one")
                 previous_report_text = crud.get_most_recent_report_text_by_title(db, codice_fiscale, report_type)
@@ -266,8 +489,8 @@ async def analyze_documents(
                 try:
                     if previous_report_text:
                         logger.info(f"Found previous report, performing comparison")
-                        from core.comparator import _perform_comparison
-                        cmp = _perform_comparison(previous_report_text, full_text)
+                        from core.comparator import _perform_comparison_chronological
+                        cmp = _perform_comparison_chronological(db, codice_fiscale, report_type, previous_report_text, full_text)
                     else:
                         logger.info(f"No previous report found for this patient and report type")
                         cmp = {

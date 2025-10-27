@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Frontend Logic Test</title>
+</head>
+<body>
+    <h1>Frontend Logic Test for Duplicate Detection</h1>
+    
+    <h2>Test Case 1: Normal Save</h2>
+    <div id="test1"></div>
+    
+    <h2>Test Case 2: Duplicate Report</h2>
+    <div id="test2"></div>
+    
+    <h2>Test Case 3: Missing CF</h2>
+    <div id="test3"></div>
+
+    <script>
+        // Simulate the frontend logic
+        function getReportStatusDisplay(report) {
+            if (report.salvato) {
+                return {
+                    text: "✓ REFERTO SALVATO",
+                    color: "green",
+                    bgColor: "border-green"
+                };
+            } else if (report.status === 'duplicate') {
+                return {
+                    text: "📄 REFERTO GIÀ PRESENTE NEL SISTEMA",
+                    color: "blue", 
+                    bgColor: "border-blue"
+                };
+            } else if (!report.codice_fiscale) {
+                return {
+                    text: "⚠ REFERTO ANALIZZATO (NON SALVATO - CODICE FISCALE MANCANTE)",
+                    color: "yellow",
+                    bgColor: "border-yellow"
+                };
+            } else {
+                return {
+                    text: "⚠ REFERTO NON SALVATO",
+                    color: "red",
+                    bgColor: "border-red"
+                };
+            }
+        }
+
+        function checkNotificationLogic(results) {
+            const notSavedReports = results.filter(r => !r.salvato);
+            const duplicateReports = notSavedReports.filter(r => r.status === 'duplicate');
+            const noCfReports = notSavedReports.filter(r => r.status !== 'duplicate' && !r.codice_fiscale);
+            
+            return {
+                showCfNotification: noCfReports.length > 0,
+                showDuplicateNotification: duplicateReports.length > 0,
+                duplicateCount: duplicateReports.length,
+                noCfCount: noCfReports.length
+            };
+        }
+
+        // Test cases
+        const testCase1 = {
+            salvato: true,
+            codice_fiscale: "RSSMRA80A01H501X",
+            status: null
+        };
+
+        const testCase2 = {
+            salvato: false,
+            codice_fiscale: "SMMNNT42E67F839D", 
+            status: "duplicate"
+        };
+
+        const testCase3 = {
+            salvato: false,
+            codice_fiscale: null,
+            status: null
+        };
+
+        // Test results
+        document.getElementById('test1').innerHTML = 
+            `<strong>Result:</strong> ${getReportStatusDisplay(testCase1).text}<br>
+             <strong>Color:</strong> ${getReportStatusDisplay(testCase1).color}`;
+
+        document.getElementById('test2').innerHTML = 
+            `<strong>Result:</strong> ${getReportStatusDisplay(testCase2).text}<br>
+             <strong>Color:</strong> ${getReportStatusDisplay(testCase2).color}`;
+
+        document.getElementById('test3').innerHTML = 
+            `<strong>Result:</strong> ${getReportStatusDisplay(testCase3).text}<br>
+             <strong>Color:</strong> ${getReportStatusDisplay(testCase3).color}`;
+
+        // Test notification logic
+        console.log("Notification Test 1 (Normal):", checkNotificationLogic([testCase1]));
+        console.log("Notification Test 2 (Duplicate):", checkNotificationLogic([testCase2]));
+        console.log("Notification Test 3 (No CF):", checkNotificationLogic([testCase3]));
+        console.log("Notification Test 4 (Mixed):", checkNotificationLogic([testCase1, testCase2, testCase3]));
+    </script>
+</body>
+</html>

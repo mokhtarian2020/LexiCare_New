@@ -5,14 +5,21 @@ import Results from "./components/Results";
 function App() {
   const [results, setResults] = useState([]);
   const [showNotification, setShowNotification] = useState(false);
+  const [showDuplicateNotification, setShowDuplicateNotification] = useState(false);
   
-  // Effect to check if any reports weren't saved due to missing Codice Fiscale
+  // Effect to check if any reports weren't saved and categorize the reasons
   React.useEffect(() => {
     if (results && results.length > 0) {
       const notSavedReports = results.filter(r => !r.salvato);
-      setShowNotification(notSavedReports.length > 0);
+      const duplicateReports = notSavedReports.filter(r => r.status === 'duplicate');
+      const noCfReports = notSavedReports.filter(r => r.status !== 'duplicate' && !r.codice_fiscale);
+      
+      // Show notification only for missing CF, not for duplicates
+      setShowNotification(noCfReports.length > 0);
+      setShowDuplicateNotification(duplicateReports.length > 0);
     } else {
       setShowNotification(false);
+      setShowDuplicateNotification(false);
     }
   }, [results]);
 
@@ -34,6 +41,25 @@ function App() {
       {/* Main Content */}
       <main className="flex-grow">
         <div className="max-w-6xl mx-auto py-8 px-6">
+          {showDuplicateNotification && (
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded-md shadow-sm">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-blue-700 font-medium">
+                    Documento già presente nel sistema.
+                  </p>
+                  <p className="mt-1 text-sm text-blue-700">
+                    Il referto è già stato salvato in precedenza, ma l'analisi è stata fornita comunque per consultazione.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
           {showNotification && (
             <div className="bg-warning-light border-l-4 border-warning p-4 mb-6 rounded-md shadow-sm">
               <div className="flex">
