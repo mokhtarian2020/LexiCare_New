@@ -717,7 +717,7 @@ def validate_diagnosis_scope(diagnosis: str, report_type: str) -> tuple[str, boo
     return diagnosis, False
 
 def analyze_radiology_report(metadata: dict) -> dict:
-    """Analyze radiology reports using text-based AI analysis."""
+    """Analyze radiology reports using text-based AI analysis with specific findings integration."""
     
     full_text = metadata.get('full_text', '')
     report_type = metadata.get('report_type', 'Referto radiologico')
@@ -733,22 +733,33 @@ def analyze_radiology_report(metadata: dict) -> dict:
     
     # Initialize list for abnormal findings
     abnormal_findings = []
+    specific_measurements = []
     
-    # Define patterns for various types of abnormalities
+    # Enhanced patterns for various types of abnormalities with measurements
     patterns = [
-        # Vascular patterns
+        # Vascular patterns with measurements
         r"(placca|stenosi|ispessimento).+?([\d,]+%|[\d,]+\s*mm|diffuso)[^\.]*",
         r"(incontinenza|insufficienza).+?([^\.]+)",
+        # Organ size measurements
+        r"(fegato|milza|rene|pancreas|tiroide).+?([\d,]+\s*cm|[\d,]+\s*mm)[^\.]*",
+        r"(diametro|dimensioni|misura).+?([\d,]+\s*cm|[\d,]+\s*mm)[^\.]*",
         # General structural patterns
-        r"(alterazion[ei]|lesion[ei]).+?([^\.]+)",
+        r"(alterazion[ei]|lesion[ei]|massa|nodulo|cisti).+?([^\.]+)",
         # Specific measurements
-        r"IMT\s*>\s*[\d,]+\s*mm[^\.]*",
+        r"IMT\s*[>≥]\s*[\d,]+\s*mm[^\.]*",
+        r"spessore.+?[\d,]+\s*mm[^\.]*",
+        # Fluid collections
+        r"(versamento|raccolta|edema).+?([^\.]+)",
         # Specific conditions
         r"fibro-ateromasica.+?([^\.]+)",
-        r"occlusione.+?([^\.]+)"
+        r"occlusione.+?([^\.]+)",
+        # Wall thickness
+        r"parete.+?(ispessita|ispessimento).+?([\d,]+\s*mm)?[^\.]*",
+        # Calcifications
+        r"calcificazion[ei].+?([^\.]+)"
     ]
     
-    # Extract abnormal findings
+    # Extract abnormal findings and measurements
     import re
     for pattern in patterns:
         matches = re.finditer(pattern, full_text, re.IGNORECASE)
@@ -763,16 +774,207 @@ def analyze_radiology_report(metadata: dict) -> dict:
                 # Add to list if not already present
                 if finding not in abnormal_findings:
                     abnormal_findings.append(finding)
+                    
+                    # Extract specific measurements if present
+                    measurement_match = re.search(r'[\d,]+\s*(mm|cm|%)', finding)
+                    if measurement_match:
+                        specific_measurements.append(measurement_match.group(0))
     
-    logger.info(f"Found {len(abnormal_findings)} abnormal findings")
+    logger.info(f"Found {len(abnormal_findings)} abnormal findings with {len(specific_measurements)} measurements")
     
-    # Get AI analysis
-    ai_result = analyze_text_with_medgemma(full_text)
+    # Enhanced AI prompt for radiology with specific findings integration
+    enhanced_prompt = f"""
+Sei un medico radiologo esperto. Analizza il seguente referto radiologico e fornisci una diagnosi specifica.
+
+IMPORTANTE - Includi nei risultati le misure e i reperti specifici trovati nel referto:
+
+REFERTO RADIOLOGICO:
+{full_text}
+
+REPERTI ANOMALI IDENTIFICATI: {', '.join(abnormal_findings[:5]) if abnormal_findings else 'Nessuno'}
+MISURAZIONI SPECIFICHE: {', '.join(specific_measurements[:3]) if specific_measurements else 'Nessune'}
+
+ISTRUZIONI SPECIFICHE:
+1. Includi nella diagnosi le misure specifiche quando disponibili (es: "Epatosplenomegalia (fegato 18cm, milza 14cm)")
+2. Menciona i reperti anomali con i loro valori (es: "Stenosi carotidea (70%)")
+3. Se ci sono ispessimenti, includi lo spessore (es: "Ispessimento parietale (3mm)")
+4. Per placche o lesioni, includi dimensioni se presenti
+5. Mantieni terminologia radiologica precisa
+
+Rispondi ESCLUSIVAMENTE in questo formato JSON:
+{{
+    "diagnosis": "diagnosi radiologica specifica con misure e reperti",
+    "classification": "lieve | moderato | grave"
+}}
+"""
     
-    # Add abnormal findings to the result
-    ai_result["abnormal_findings"] = abnormal_findings
+    try:
+        # Send enhanced prompt to AI
+        response = ollama.chat(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": enhanced_prompt}]
+        )
+        
+        response_text = response['message']['content'].strip()
+        logger.info(f"🤖 AI response received for radiology, length: {len(response_text)} chars")
+        
+        # Parse JSON response
+        try:
+            # Clean the response
+            cleaned_result = response_text
+            if "```json" in cleaned_result:
+                cleaned_result = cleaned_result.replace("```json", "").replace("```", "").strip()
+            elif "```" in cleaned_result:
+                parts = cleaned_result.split("```")
+                if len(parts) >= 2:
+                    cleaned_result = parts[1].strip()
+                    if cleaned_result.startswith("json"):
+                        cleaned_result = cleaned_result[4:].strip()
+            
+            parsed_result = json.loads(cleaned_result.strip())
+            diagnosis = parsed_result.get('diagnosis', 'Diagnosi radiologica non disponibile')
+            classification = parsed_result.get('classification', 'moderato')
+            
+            # Validate classification
+            valid_classifications = ["lieve", "moderato", "grave"]
+            if classification not in valid_classifications:
+                logger.warning(f"Invalid classification '{classification}', defaulting to 'moderato'")
+                classification = "moderato"
+            
+            # Enhance diagnosis with specific findings if AI didn't include them
+            enhanced_diagnosis = enhance_radiology_diagnosis_with_findings(diagnosis, abnormal_findings, specific_measurements)
+            
+            logger.info(f"✅ Radiology analysis complete: {enhanced_diagnosis}")
+            return {
+                "diagnosis": enhanced_diagnosis,
+                "classification": classification,
+                "abnormal_findings": abnormal_findings,
+                "specific_measurements": specific_measurements,
+                "report_type": report_type
+            }
+            
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse JSON response: {str(e)}")
+            logger.warning(f"Raw response: {response_text[:200]}...")
+            
+            # Fallback: Create diagnosis based on findings
+            fallback_diagnosis = create_radiology_fallback_diagnosis(abnormal_findings, specific_measurements)
+            classification = "moderato" if abnormal_findings else "lieve"
+            
+            logger.info(f"🔄 Using fallback radiology diagnosis: {fallback_diagnosis}")
+            return {
+                "diagnosis": fallback_diagnosis,
+                "classification": classification,
+                "abnormal_findings": abnormal_findings,
+                "specific_measurements": specific_measurements,
+                "note": "Analisi fallback (JSON parsing failed)"
+            }
+                
+    except Exception as ai_error:
+        logger.error(f"AI communication error for radiology: {str(ai_error)}")
+        
+        # Fallback analysis based on findings
+        fallback_diagnosis = create_radiology_fallback_diagnosis(abnormal_findings, specific_measurements)
+        classification = "moderato" if abnormal_findings else "lieve"
+        
+        logger.info(f"🔄 Using fallback radiology diagnosis due to AI error: {fallback_diagnosis}")
+        return {
+            "diagnosis": fallback_diagnosis,
+            "classification": classification,
+            "abnormal_findings": abnormal_findings,
+            "specific_measurements": specific_measurements,
+            "note": "Analisi automatica (AI non disponibile)"
+        }
+
+def enhance_radiology_diagnosis_with_findings(diagnosis: str, abnormal_findings: list, specific_measurements: list) -> str:
+    """Enhance radiology diagnosis by adding specific findings and measurements if not already present."""
     
-    return ai_result
+    diagnosis_lower = diagnosis.lower()
+    
+    # Check if diagnosis already contains specific values
+    has_measurements = any(unit in diagnosis_lower for unit in ['mm', 'cm', '%', 'ml'])
+    
+    if has_measurements:
+        # Diagnosis already has measurements, return as is
+        return diagnosis
+    
+    # Add specific findings to diagnosis
+    enhancements = []
+    
+    # Look for key findings with measurements
+    for finding in abnormal_findings[:3]:  # Limit to top 3 findings
+        finding_lower = finding.lower()
+        
+        # Extract measurement from finding
+        import re
+        measurement_match = re.search(r'[\d,]+\s*(mm|cm|%)', finding)
+        
+        if measurement_match:
+            measurement = measurement_match.group(0)
+            
+            # Categorize finding type
+            if any(term in finding_lower for term in ['stenosi', 'placca']):
+                if 'stenosi' not in diagnosis_lower:
+                    enhancements.append(f"stenosi ({measurement})")
+            elif any(term in finding_lower for term in ['ispessimento', 'spessore']):
+                if 'ispessimento' not in diagnosis_lower:
+                    enhancements.append(f"ispessimento ({measurement})")
+            elif any(term in finding_lower for term in ['fegato', 'milza', 'rene']):
+                organ = 'fegato' if 'fegato' in finding_lower else ('milza' if 'milza' in finding_lower else 'rene')
+                enhancements.append(f"{organ} {measurement}")
+    
+    # Combine diagnosis with enhancements
+    if enhancements:
+        enhanced = f"{diagnosis} ({', '.join(enhancements)})"
+        return enhanced
+    
+    return diagnosis
+
+def create_radiology_fallback_diagnosis(abnormal_findings: list, specific_measurements: list) -> str:
+    """Create radiology diagnosis based on findings when AI is not available."""
+    
+    if not abnormal_findings:
+        return "Referto radiologico nei limiti della norma"
+    
+    diagnoses = []
+    
+    for finding in abnormal_findings[:3]:  # Limit to top 3 findings
+        finding_lower = finding.lower()
+        
+        # Extract measurement if present
+        import re
+        measurement_match = re.search(r'[\d,]+\s*(mm|cm|%)', finding)
+        measurement = measurement_match.group(0) if measurement_match else ""
+        
+        # Categorize and create specific diagnoses
+        if any(term in finding_lower for term in ['stenosi', 'restringimento']):
+            diagnoses.append(f"Stenosi {f'({measurement})' if measurement else ''}")
+        elif any(term in finding_lower for term in ['placca', 'aterosclerosi']):
+            diagnoses.append(f"Placca aterosclerotica {f'({measurement})' if measurement else ''}")
+        elif any(term in finding_lower for term in ['ispessimento', 'spessore']):
+            diagnoses.append(f"Ispessimento parietale {f'({measurement})' if measurement else ''}")
+        elif any(term in finding_lower for term in ['versamento', 'raccolta']):
+            diagnoses.append(f"Versamento {f'({measurement})' if measurement else ''}")
+        elif any(term in finding_lower for term in ['massa', 'lesione', 'nodulo']):
+            diagnoses.append(f"Lesione focale {f'({measurement})' if measurement else ''}")
+        elif any(term in finding_lower for term in ['calcificazione']):
+            diagnoses.append(f"Calcificazioni {f'({measurement})' if measurement else ''}")
+        elif any(term in finding_lower for term in ['dilatazione', 'ectasia']):
+            diagnoses.append(f"Dilatazione {f'({measurement})' if measurement else ''}")
+        else:
+            # Generic finding with measurement if available
+            if measurement:
+                # Try to extract the condition from the finding
+                condition_match = re.search(r'^[^(]+', finding)
+                condition = condition_match.group(0).strip() if condition_match else finding
+                diagnoses.append(f"{condition} ({measurement})")
+            else:
+                diagnoses.append(finding[:50])  # Truncate long findings
+    
+    if diagnoses:
+        return " | ".join(diagnoses)
+    else:
+        return f"Alterazioni radiologiche rilevate ({len(abnormal_findings)} reperti)"
 
 def analyze_pathology_report(metadata: dict) -> dict:
     """Analyze pathology reports using text-based AI analysis."""
